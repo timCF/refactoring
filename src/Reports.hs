@@ -61,7 +61,7 @@ instance (Show a) => Show (Measured a) where
   show (MGt x)        = ">" ++ show x
   show (MBetween x y) = show x ++ "-" ++ show y
 
-measure :: (Ord a, Show a) => [a] -> (a -> a) -> a -> Measured a
+measure :: (Ord a) => [a] -> (a -> a) -> a -> Measured a
 measure scale resolution x = go (sort scale)
   where
     go [] = MEq x

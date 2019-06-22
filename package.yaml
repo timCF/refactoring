@@ -27,9 +27,6 @@ library:
   ghc-options:
   - -Wall
   - -fwarn-tabs
-  - -threaded
-  - -rtsopts
-  - -with-rtsopts=-N
 
 tests:
   rep-test:

@@ -2,17 +2,29 @@ module Reports (Event(..), Aggregate(..), aggregate) where
 
 import           Data.List
 
+--
+--  input types are just aliases
+--  because it's refactoring
+--  and we can't change public API
+--
+
 type Iso8601Date = String
-type CentAmount = Int
+type MoneyAmount = Int
 type PaymentMethod = String
 type MerchantId = String
 
 data Event = Event {
   eventIso8601Date   :: Iso8601Date,
-  eventCentAmount    :: CentAmount,
+  eventMoneyAmount   :: MoneyAmount,
   eventPaymentMethod :: PaymentMethod,
   eventMerchantId    :: MerchantId
 } deriving (Eq, Ord, Read)
+
+--
+--  output types are just aliases
+--  because it's refactoring
+--  and we can't change public API
+--
 
 type ReportData = String
 type EventCount = Int
@@ -22,32 +34,47 @@ data Aggregate = Agg {
   aggEventCount :: EventCount
 } deriving (Eq, Show)
 
-newtype MoneyAmount = MoneyAmount CentAmount deriving (Eq, Ord)
-instance Show MoneyAmount where
-  show (MoneyAmount ma) = show $ div ma 100
+--
+-- new types and refactored code
+--
 
-moneyAmountScale :: [MoneyAmount]
-moneyAmountScale = [
-    MoneyAmount 1000,
-    MoneyAmount 5000,
-    MoneyAmount 10000,
-    MoneyAmount 50000
+newtype Money = Money MoneyAmount deriving (Eq, Ord)
+instance Show Money where
+  show m = show ma
+    where Money ma = moneyResolution m
+
+moneyResolution :: Money -> Money
+moneyResolution (Money x) = Money $ div x 100
+
+moneyScale :: [Money]
+moneyScale = [
+    Money 1000,
+    Money 5000,
+    Money 10000,
+    Money 50000
   ]
 
-showOnScale :: (Ord a, Show a) => [a] -> a -> String
-showOnScale xs x = go (sort xs)
+data Measured a = MLt a | MEq a | MGt a | MBetween a a
+instance (Show a) => Show (Measured a) where
+  show (MLt x)        = "<" ++ show x
+  show (MEq x)        = show x
+  show (MGt x)        = ">" ++ show x
+  show (MBetween x y) = show x ++ "-" ++ show y
+
+measure :: (Ord a, Show a) => [a] -> (a -> a) -> a -> Measured a
+measure scale resolution x = go (sort scale)
   where
-    go [] = show x
+    go [] = MEq x
     go [p]
-      | x < p = "<" ++ show p
-      | x > p = ">" ++ show p
-      | otherwise = show p
+      | x < p = MLt p
+      | x > p = MGt p
+      | otherwise = MEq p
     go (p0:p1:ps)
-      | x < p0 = "<" ++ show p0
+      | x < p0 = MLt p0
       | x >= p0 && x < p1 =
-        case (show p0, show p1) of
-          (s0, s1) | s0 == s1 -> go (p0:ps)
-          (s0, s1)            -> s0 ++ "-" ++ s1
+        case (resolution p0, resolution p1) of
+          (p0', p1') | p0' == p1' -> go (p0:ps)
+          (_, _)                  -> MBetween p0 p1
       | otherwise = go (p1:ps)
 
 hour :: Event -> String
@@ -59,7 +86,7 @@ day (Event date _ _ _) = takeWhile (/= 'T') date
 
 amountBracket :: Event -> String
 amountBracket =
-  showOnScale moneyAmountScale . MoneyAmount . eventCentAmount
+  show . measure moneyScale moneyResolution . Money . eventMoneyAmount
 
 addAggregate :: String -> [Aggregate] -> [Aggregate]
 addAggregate datapoint aggrs =
@@ -71,6 +98,12 @@ addAggregate datapoint aggrs =
         then Agg dp (events + 1)
         else Agg dp events
   else aggrs ++ [Agg datapoint 1]
+
+-- reportHourAmount :: Event -> String
+-- reportHourAmountPaymentMethod :: Event -> String
+-- reportAmountPaymentMethod :: Event -> String
+-- reportDayMerchant :: Event -> String
+-- reportMerchantPaymentMethod :: Event -> String
 
 aggregate :: [Event] -> [Aggregate]
 aggregate = foldl (\acc event ->

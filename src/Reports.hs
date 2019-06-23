@@ -118,6 +118,11 @@ genReports e =
     R4 merchantId paymentMethod
   ]
   where
+    -- This code is unsafe, program will exit here on invalid input.
+    --
+    -- I wanted to fix it, but this excercise is just refactoring -
+    -- it means that if old version of code exited here on
+    -- invalid input then new version should exit as well.
     (d, 'T':h0:h1:_) = break (== 'T') $ eventIso8601Date e
     day :: RDay
     day = RDay d
@@ -143,9 +148,9 @@ aggregate es =
   foldlWithKey (\acc p c -> Agg p c : acc) [] aggSet
   where
     aggSet :: AggSet
-    aggSet = Data.List.foldl addAggregate empty (show <$> (es >>= genReports))
-    addAggregate :: AggSet -> ReportData -> AggSet
-    addAggregate acc p =
+    aggSet = Data.List.foldl go empty (show <$> (es >>= genReports))
+    go :: AggSet -> ReportData -> AggSet
+    go acc p =
       if member p acc
       then update (\x -> Just $ x + 1) p acc
       else Data.Map.insert p 1 acc

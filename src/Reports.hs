@@ -154,3 +154,56 @@ aggregate es =
       if member p acc
       then update (\x -> Just $ x + 1) p acc
       else Data.Map.insert p 1 acc
+
+--
+-- old version of code (before refactoring)
+--
+--
+-- module Reports (Event(..), Aggregate(..), aggregate) where
+--
+-- type PaymentMethod = String
+--
+-- -- date amount method merchantID
+-- data Event = Event String Int PaymentMethod String
+--   deriving (Eq, Ord, Read)
+--
+-- -- datapoint events
+-- data Aggregate = Agg String Int
+--   deriving (Eq, Show)
+--
+-- hour :: Event -> String
+-- hour (Event date _ _ _) = let (day, 'T':time) = break (== 'T') date
+--                            in day ++ ":" ++ take 2 time
+--
+-- day :: Event -> String
+-- day (Event date _ _ _) = takeWhile (/= 'T') $ date
+--
+-- amountBracket :: Event -> String
+-- amountBracket (Event _ amount _ _) =
+--   if (amount < 1000) then "<10"
+--   else if (amount < 5000) then "10-50"
+--   else if (amount < 10000) then "50-100"
+--   else if (amount < 50000) then "100-500"
+--   else ">500"
+--
+-- addAggregate :: String -> [Aggregate] -> [Aggregate]
+-- addAggregate datapoint aggrs =
+--   if any (\(Agg dp _) -> dp == datapoint) $ aggrs
+--   then flip map [0..length aggrs - 1] $ \i ->
+--     case aggrs !! i of
+--       (Agg dp events) ->
+--         if dp == datapoint
+--         then Agg dp (events + 1)
+--         else Agg dp events
+--   else aggrs ++ [Agg datapoint 1]
+--
+-- aggregate :: [Event] -> [Aggregate]
+-- aggregate events = foldl (\acc event ->
+--   let (Event _ _ paymentMethod merchantID) = event in
+--     addAggregate (hour event ++ "|" ++ amountBracket event) $
+--     addAggregate (hour event ++ "|" ++ amountBracket event ++ "|" ++ paymentMethod) $
+--     addAggregate (amountBracket event ++ "|" ++ paymentMethod) $
+--     addAggregate (day event ++ "|" ++ merchantID) $
+--     addAggregate (merchantID ++ "|" ++ paymentMethod) $
+--     acc
+--   ) [] events

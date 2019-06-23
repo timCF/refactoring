@@ -1,6 +1,7 @@
 module Reports (Event(..), Aggregate(..), aggregate) where
 
 import           Data.List
+import           Data.Map
 
 --
 --  input types are just aliases
@@ -57,7 +58,7 @@ moneyScale = [
 data Measured a = MLt a | MEq a | MGt a | MBetween a a
 instance (Show a) => Show (Measured a) where
   show (MLt x)        = "<" ++ show x
-  show (MEq x)        = show x
+  show (MEq x)        = "=" ++ show x
   show (MGt x)        = ">" ++ show x
   show (MBetween x y) = show x ++ "-" ++ show y
 
@@ -77,41 +78,74 @@ measure scale resolution x = go (sort scale)
           (_, _)                  -> MBetween p0 p1
       | otherwise = go (p1:ps)
 
-hour :: Event -> String
-hour (Event date _ _ _) = let (d, 'T':time) = break (== 'T') date
-                           in d ++ ":" ++ take 2 time
+newtype RDay = RDay String
+data RHourOfDay = RHourOfDay String RDay
+newtype RPaymentMethod = RPaymentMethod PaymentMethod
+newtype RAmountBracket = RAmountBracket String
+newtype RMerchantId = RMerchantId MerchantId
 
-day :: Event -> String
-day (Event date _ _ _) = takeWhile (/= 'T') date
+instance Show RDay where
+  show (RDay x) = x
+instance Show RHourOfDay where
+  show (RHourOfDay h (RDay d)) = d ++ ":" ++ h
+instance Show RPaymentMethod where
+  show (RPaymentMethod x) = x
+instance Show RAmountBracket where
+  show (RAmountBracket x) = x
+instance Show RMerchantId where
+  show (RMerchantId x) = x
 
-amountBracket :: Event -> String
-amountBracket =
-  show . measure moneyScale moneyResolution . Money . eventMoneyAmount
+data Report = R0 RHourOfDay RAmountBracket |
+              R1 RHourOfDay RAmountBracket RPaymentMethod |
+              R2 RAmountBracket RPaymentMethod |
+              R3 RDay RMerchantId |
+              R4 RMerchantId RPaymentMethod
 
-addAggregate :: String -> [Aggregate] -> [Aggregate]
-addAggregate datapoint aggrs =
-  if any (\(Agg dp _) -> dp == datapoint) aggrs
-  then flip map [0..length aggrs - 1] $ \i ->
-    case aggrs !! i of
-      (Agg dp events) ->
-        if dp == datapoint
-        then Agg dp (events + 1)
-        else Agg dp events
-  else aggrs ++ [Agg datapoint 1]
+instance Show Report where
+  show (R0 x y)   = show x ++ "|" ++ show y
+  show (R1 x y z) = show x ++ "|" ++ show y ++ "|" ++ show z
+  show (R2 x y)   = show x ++ "|" ++ show y
+  show (R3 x y)   = show x ++ "|" ++ show y
+  show (R4 x y)   = show x ++ "|" ++ show y
 
--- reportHourAmount :: Event -> String
--- reportHourAmountPaymentMethod :: Event -> String
--- reportAmountPaymentMethod :: Event -> String
--- reportDayMerchant :: Event -> String
--- reportMerchantPaymentMethod :: Event -> String
+genReports :: Event -> [Report]
+genReports e =
+  [
+    R0 hourOfDay amountBracket,
+    R1 hourOfDay amountBracket paymentMethod,
+    R2 amountBracket paymentMethod,
+    R3 day merchantId,
+    R4 merchantId paymentMethod
+  ]
+  where
+    (d, 'T':h0:h1:_) = break (== 'T') $ eventIso8601Date e
+    day :: RDay
+    day = RDay d
+    hourOfDay :: RHourOfDay
+    hourOfDay = RHourOfDay [h0, h1] day
+    paymentMethod :: RPaymentMethod
+    paymentMethod = (RPaymentMethod . eventPaymentMethod) e
+    amountBracket :: RAmountBracket
+    amountBracket = (
+        RAmountBracket .
+        show .
+        measure moneyScale moneyResolution .
+        Money .
+        eventMoneyAmount
+      ) e
+    merchantId :: RMerchantId
+    merchantId = (RMerchantId . eventMerchantId) e
+
+type AggSet = Map ReportData EventCount
 
 aggregate :: [Event] -> [Aggregate]
-aggregate = foldl (\acc event ->
-  let (Event _ _ paymentMethod merchantID) = event in
-    addAggregate (hour event ++ "|" ++ amountBracket event) $
-    addAggregate (hour event ++ "|" ++ amountBracket event ++ "|" ++ paymentMethod) $
-    addAggregate (amountBracket event ++ "|" ++ paymentMethod) $
-    addAggregate (day event ++ "|" ++ merchantID) $
-    addAggregate (merchantID ++ "|" ++ paymentMethod)
-    acc
-  ) []
+aggregate es =
+  foldlWithKey (\acc p c -> Agg p c : acc) [] aggSet
+  where
+    aggSet :: AggSet
+    aggSet = Data.List.foldl addAggregate empty (show <$> (es >>= genReports))
+    addAggregate :: AggSet -> ReportData -> AggSet
+    addAggregate acc p =
+      if member p acc
+      then update (\x -> Just $ x + 1) p acc
+      else Data.Map.insert p 1 acc

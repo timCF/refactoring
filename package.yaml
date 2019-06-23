@@ -27,6 +27,8 @@ library:
   ghc-options:
   - -Wall
   - -fwarn-tabs
+  dependencies:
+    - containers
 
 tests:
   rep-test:

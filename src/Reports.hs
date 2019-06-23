@@ -149,6 +149,16 @@ aggregate es =
   where
     aggSet :: AggSet
     aggSet = Data.List.foldl go empty (show <$> (es >>= genReports))
+    --
+    --  Usage of ReportData type (which is String) as unique key
+    --  to count events is not perfect idea because
+    --  String representation of different reports
+    --  theoretically can overlap, not now, but if we add more
+    --  report types later - it can happen. Type system
+    --  can't prevent this kind of errors. I did'n fixed it
+    --  because excerice is just refactoring and behaviour
+    --  of program should not change.
+    --
     go :: AggSet -> ReportData -> AggSet
     go acc p =
       if member p acc
